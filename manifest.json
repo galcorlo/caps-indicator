@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "id": "mero.caps-indicator",
   "name": "Caps lock indicator",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "author": "Mero J.",
   "description": "A dot that lights up while Caps Lock is on",
   "kinds": [
@@ -13,7 +13,7 @@
   },
   "barWidget": {
     "displayName": "Caps lock indicator",
-    "description": "A small dot that lights up while Caps Lock is on. Refreshes instantly via a self-registered Caps_Lock bind and falls back to a light poll.",
+    "description": "A small dot that lights up while Caps Lock is on. Refreshes instantly via self-registered Caps_Lock press/release binds; polls only while those binds are missing.",
     "category": "Status",
     "allowMultiple": true,
     "schema": [

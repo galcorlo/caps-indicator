@@ -195,13 +195,14 @@ BarWidget {
   // CapsIndicatorModel.js for how instances share one registration.
   readonly property string bindDescription: String(root.moduleName || "") + " refresh"
   property string bindCode: ""
+  readonly property string releaseBindDescription: root.bindDescription + " release"
 
   function bindPresent(json) {
     try {
       const binds = JSON.parse(String(json || "[]"))
       if (!Array.isArray(binds)) return false
       return binds.some(function (b) {
-        return String(b.key || "") === "Caps_Lock" && String(b.description || "") === root.bindDescription
+        return String(b.key || "") === "Caps_Lock" && String(b.description || "") === root.releaseBindDescription
       })
     } catch (e) {
       return false
@@ -209,13 +210,45 @@ BarWidget {
   }
 
   function addBind() {
-    root.bindCode = 'o.bind("Caps_Lock", "' + root.bindDescription + '", "omarchy-shell -q ' + root.moduleName + ' refresh", { locked = true, non_consuming = true, ignore_mods = true })'
+    // Press and release: xkb turns the lock off on key release, so a release
+    // bind lets the dot go out instantly instead of waiting for the settle poll.
+    var cmd = '"omarchy-shell -q ' + root.moduleName + ' refresh"'
+    root.bindCode = 'o.bind_hold("Caps_Lock", "' + root.bindDescription + '", ' + cmd + ', "' + root.releaseBindDescription + '", ' + cmd + ', { locked = true, non_consuming = true, ignore_mods = true })'
     bindEvalProc.running = true
   }
 
+  // True while the Caps_Lock press/release binds are registered. The standby
+  // poll only runs while this is false, so with the binds in place the widget
+  // is purely event-driven.
+  property bool bindActive: false
+  property int bindChecks: 0
+
+  // Every instance checks for the binds (read-only) so each one knows whether
+  // it may stop polling; only the instance holding the registration slot adds.
   function ensureBindAdded() {
-    if (!CapsIndicatorModel.claimRegistration()) return
+    root.bindActive = false
+    root.bindChecks = 0
     bindCheckProc.running = true
+  }
+
+  function onBindCheck(present) {
+    if (present) {
+      root.bindActive = true
+      return
+    }
+    if (CapsIndicatorModel.claimRegistration()) {
+      root.addBind()
+      return
+    }
+    // Another instance is adding it, or it failed: look again shortly, and
+    // keep polling as the fallback meanwhile.
+    if (root.bindChecks++ < 10) bindRecheckTimer.restart()
+  }
+
+  Timer {
+    id: bindRecheckTimer
+    interval: 1000
+    onTriggered: bindCheckProc.running = true
   }
 
   IpcHandler {
@@ -314,7 +347,7 @@ BarWidget {
     command: ["hyprctl", "-j", "binds"]
     stdout: StdioCollector {
       waitForEnd: true
-      onStreamFinished: root.bindPresent(text) ? undefined : root.addBind()
+      onStreamFinished: root.onBindCheck(root.bindPresent(text))
     }
   }
 
@@ -324,6 +357,8 @@ BarWidget {
     stdout: StdioCollector {
       waitForEnd: true
     }
+    // Confirm the eval took before trusting the binds and stopping the poll.
+    onExited: bindRecheckTimer.restart()
   }
 
   // A query that never returns would freeze the dot until the shell restarts,
@@ -338,13 +373,13 @@ BarWidget {
     }
   }
 
-  // The Lock modifier cannot be learned from a Hyprland event, and the bind
-  // only fires on press, so a light poll is the safety net that catches state
-  // changes the bind missed (it also covers systems where the eval bind fails).
+  // The Lock modifier cannot be learned from a Hyprland event, so while the
+  // press/release binds are missing (startup, right after a config reload, or
+  // systems where the eval fails) a light poll stands in for them.
   Timer {
     id: standbyTimer
     interval: 500
-    running: root.visible
+    running: root.visible && !root.bindActive
     repeat: true
     onTriggered: root.refresh()
   }
@@ -368,11 +403,11 @@ BarWidget {
       opacity: root.capsLock ? 1 : root.offOpacity
 
       Behavior on opacity {
-        NumberAnimation { duration: 140; easing.type: Easing.OutCubic }
+        NumberAnimation { duration: 50 }
       }
 
       Behavior on color {
-        ColorAnimation { duration: 140 }
+        ColorAnimation { duration: 50 }
       }
     }
   }

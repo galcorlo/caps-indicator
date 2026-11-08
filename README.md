@@ -5,8 +5,8 @@ A tiny bar widget that shows a single dot while [Caps Lock](https://en.wikipedia
 ## Features
 
 - One dot, zero text. Lights up in the bar's active color while Caps Lock is on, dims (or hides) when it's off.
-- **Instant refresh with zero config**: the widget registers its own non-consuming `Caps_Lock` bind at runtime and re-asserts it after every config reload, so the dot responds the moment caps is pressed or released. No bind line for you to add.
-- **Poll fallback**: a light 500 ms poll (only while the widget is visible) keeps the dot honest even if the bind can't be registered.
+- **Instant refresh with zero config**: the widget registers its own non-consuming `Caps_Lock` press and release binds at runtime and re-asserts them after every config reload, so the dot responds the moment caps is pressed or released. No bind line for you to add.
+- **No polling while the binds are in place**: a light 500 ms poll runs only while the binds are missing (startup, right after a config reload, or if they can't be registered), and only while the widget is visible.
 - Reads the Lock modifier from a real keyboard, not from Hyprland's radio controls, hotkey arrays, or the fcitx5 virtual keyboard, so it can't get stuck.
 - Placement anywhere on the bar, per monitor, like any other bar widget.
 
@@ -52,9 +52,9 @@ Example inline settings on the bar entry:
 
 Caps Lock raises no Hyprland event, so the widget:
 
-1. Registers a non-consuming, locked, ignore-mods bind on `Caps_Lock` (dispatcher: `omarchy-shell -q mero.caps-indicator refresh`) via `hyprctl eval`, exactly once per shell per config reload (`mero.caps-indicator` is a runtime-only binding id and is re-added when Hyprland reloads).
-2. The bind invokes an IPC handler in the widget, which re-reads `hyprctl -j devices` a few times at short intervals to catch both the press (lock engages) and the release (lock disengages).
-3. A 500 ms visible-only poll catches anything the bind missed (for example, if the eval bind is unavailable on an installed system).
+1. Registers non-consuming, locked, ignore-mods press and release binds on `Caps_Lock` (via `o.bind_hold`, dispatcher: `omarchy-shell -q mero.caps-indicator refresh`) with `hyprctl eval`, exactly once per shell per config reload (the binds are runtime-only and are re-added when Hyprland reloads).
+2. xkb engages the lock on press but releases it on key release, so each bind invokes an IPC handler in the widget that re-reads `hyprctl -j devices` right away (plus a few short follow-up reads as a safety margin).
+3. Every widget instance checks that the binds are registered; while they are, nothing polls. While they are missing, a 500 ms visible-only poll stands in for them.
 
 ## Compatibility & limits
 
